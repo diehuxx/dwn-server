@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from 'express';
-import type { Dwn } from '@tbd54566975/dwn-sdk-js';
+import { Dwn, RecordsRead, RecordsReadReply } from '@tbd54566975/dwn-sdk-js';
 import type { RequestContext } from './lib/json-rpc-router.js';
 import responseTime from 'response-time';
 
@@ -53,6 +53,29 @@ export class HttpApi {
       // return a plain text string
       res.setHeader('content-type', 'text/plain');
       return res.send('please use a web5 client, for example: https://github.com/TBD54566975/web5-js ');
+    });
+
+    this.api.get('/:did/records/:id', async (req, res) => {
+      const record = await RecordsRead.create({ recordId: req.params.id });
+      let reply = await this.dwn.processMessage(req.params.did, record.toJSON()) as RecordsReadReply;
+
+      if (reply.status.code === 200) {
+        if (reply?.record?.data !== undefined) {
+          const stream = reply.record.data;
+          delete reply.record.data;
+
+          res.setHeader('content-type', reply.record.descriptor.dataFormat);
+          res.setHeader('dwn-response', JSON.stringify(reply));
+
+          return stream.pipe(res);
+        } else {
+          return res.sendStatus(400);
+        }
+      } else if (reply.status.code === 401) {
+        return res.sendStatus(404);
+      } else {
+        return res.status(reply.status.code).send(reply);
+      }
     });
 
     this.api.post('/', async (req: Request, res) => {
